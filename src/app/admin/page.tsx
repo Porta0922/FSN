@@ -23,26 +23,14 @@ export default function AdminPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.push("/login"); return }
 
-      const { data: adminRoleIds } = await supabase
-        .from("roles")
-        .select("id, name")
-        .in("name", ["admin", "super_admin"])
-
-      const adminIds = adminRoleIds?.map((r) => r.id) || []
-      const superAdminId = adminRoleIds?.find((r) => r.name === "super_admin")?.id
-
-      const { data: userRoles } = await supabase
-        .from("profile_roles")
-        .select("role_id")
-        .eq("profile_id", user.id)
-        .in("role_id", adminIds)
-
-      if (!userRoles || userRoles.length === 0) {
+      const { data: isAdminUser } = await supabase.rpc("is_admin", { user_id: user.id })
+      if (!isAdminUser) {
         router.push("/dashboard")
         return
       }
 
-      setIsSuperAdmin(userRoles.some((pr) => pr.role_id === superAdminId))
+      const { data: isSuperAdminUser } = await supabase.rpc("is_super_admin", { user_id: user.id })
+      setIsSuperAdmin(!!isSuperAdminUser)
 
       const { data: profiles } = await supabase
         .from("profiles")

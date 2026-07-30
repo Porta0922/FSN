@@ -39,23 +39,8 @@ export default function Navbar() {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
-        const { data: adminRoles } = await supabase
-          .from("roles")
-          .select("id")
-          .in("name", ["admin", "super_admin"])
-
-        if (!adminRoles || adminRoles.length === 0) return
-
-        const adminIds = adminRoles.map((r) => r.id)
-        const { data: userRoles } = await supabase
-          .from("profile_roles")
-          .select("role_id")
-          .eq("profile_id", user.id)
-          .in("role_id", adminIds)
-
-        if (userRoles && userRoles.length > 0) {
-          setIsAdmin(true)
-        }
+        const { data: isAdminUser } = await supabase.rpc("is_admin", { user_id: user.id })
+        if (isAdminUser) setIsAdmin(true)
       }
     }
     checkAdmin()
