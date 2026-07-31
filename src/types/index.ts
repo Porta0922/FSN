@@ -92,6 +92,17 @@ export interface PhotoWithProfile extends Photo {
   profiles: Profile
 }
 
+export interface MarketplaceItem {
+  id: string
+  name: string
+  description: string | null
+  price: number
+  image_url: string
+  is_active: boolean
+  created_by: string | null
+  created_at: string
+}
+
 export interface MvpVote {
   id: string
   match_id: string
