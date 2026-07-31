@@ -2,7 +2,10 @@
   "crons": [
     {
       "path": "/api/cron/generate-matches",
-      "schedule": "0 0 1 * *"
+      "schedule": "0 0 1 * *",
+      "headers": {
+        "Authorization": "Bearer 015c7a458fe8d725bb2809d3c998dc99d463e4182a8fc8b0c77420fa3d660c7f"
+      }
     }
   ]
 }
