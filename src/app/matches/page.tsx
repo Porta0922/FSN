@@ -5,8 +5,9 @@ import Link from "next/link"
 import Navbar from "@/components/Navbar"
 import { createClient } from "@/lib/supabase/client"
 import { formatDate, formatCurrency, getStatusColor, getStatusLabel, cn } from "@/lib/utils"
-import type { Match, Attendance } from "@/types"
-import { Plus, Filter } from "lucide-react"
+import type { Match } from "@/types"
+import { Plus } from "lucide-react"
+import { toast } from "sonner"
 
 export default function MatchesPage() {
   const [matches, setMatches] = useState<Match[]>([])
@@ -21,14 +22,8 @@ export default function MatchesPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      const { data: roleData } = await supabase
-        .from("profile_roles")
-        .select("roles(name)")
-        .eq("profile_id", user.id)
-
-      if (roleData) {
-        setIsAdmin(roleData.some((pr: any) => pr.roles?.name === "admin" || pr.roles?.name === "super_admin"))
-      }
+      const { data: isAdminUser } = await supabase.rpc("is_admin", { user_id: user.id })
+      setIsAdmin(!!isAdminUser)
 
       const { data: matchesData } = await supabase
         .from("matches")
@@ -67,16 +62,25 @@ export default function MatchesPage() {
 
     const existing = userAttendance[matchId]
 
+    let error = null
+
     if (existing) {
-      await supabase
+      const res = await supabase
         .from("attendance")
         .update({ status })
         .eq("match_id", matchId)
         .eq("profile_id", user.id)
+      error = res.error
     } else {
-      await supabase
+      const res = await supabase
         .from("attendance")
         .insert({ match_id: matchId, profile_id: user.id, status })
+      error = res.error
+    }
+
+    if (error) {
+      toast.error("No se pudo actualizar la asistencia")
+      return
     }
 
     setUserAttendance((prev) => ({ ...prev, [matchId]: status }))

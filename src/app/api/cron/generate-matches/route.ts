@@ -1,8 +1,26 @@
-import { NextResponse } from "next/server"
+import { NextResponse, type NextRequest } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { createClient as createServerClient } from "@/lib/supabase/server"
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const authHeader = request.headers.get("authorization")
+    const secret = process.env.CRON_SECRET
+    const authorized = secret ? authHeader === `Bearer ${secret}` : false
+
+    if (!authorized) {
+      const supabase = await createServerClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      }
+
+      const { data: isAdmin } = await supabase.rpc("is_admin", { user_id: user.id })
+      if (!isAdmin) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      }
+    }
+
     const supabase = createAdminClient()
 
     const { data: config } = await supabase
@@ -37,7 +55,6 @@ export async function GET() {
 
       if (existing && existing.length > 0) continue
 
-      // Skip past dates (only if not today and in the past)
       const today = new Date()
       today.setHours(0, 0, 0, 0)
       if (d < today) continue

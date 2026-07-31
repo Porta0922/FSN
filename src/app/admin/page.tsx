@@ -4,8 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Navbar from "@/components/Navbar"
 import { createClient } from "@/lib/supabase/client"
-import { TEAM_NAME, ROLES } from "@/lib/constants"
-import { formatCurrency } from "@/lib/utils"
+import { ROLES } from "@/lib/constants"
 import type { Profile, TeamConfig } from "@/types"
 import { toast } from "sonner"
 
@@ -81,13 +80,21 @@ export default function AdminPage() {
     if (!roleData) return
 
     if (add) {
-      await supabase.from("profile_roles").insert({ profile_id: profileId, role_id: roleData.id })
+      const { error } = await supabase.from("profile_roles").insert({ profile_id: profileId, role_id: roleData.id })
+      if (error) {
+        toast.error("Error al asignar el rol")
+        return
+      }
     } else {
-      await supabase
+      const { error } = await supabase
         .from("profile_roles")
         .delete()
         .eq("profile_id", profileId)
         .eq("role_id", roleData.id)
+      if (error) {
+        toast.error("Error al quitar el rol")
+        return
+      }
     }
 
     setPlayers((prev) =>
@@ -111,7 +118,7 @@ export default function AdminPage() {
     setGenerating(false)
   }
 
-  async function handleUpdateConfig(field: string, value: any) {
+  async function handleUpdateConfig(field: string, value: string | number | boolean | null) {
     if (!config) return
     const supabase = createClient()
     await supabase.from("team_config").update({ [field]: value }).eq("id", config.id)

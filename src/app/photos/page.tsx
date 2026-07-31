@@ -5,7 +5,8 @@ import Navbar from "@/components/Navbar"
 import { createClient } from "@/lib/supabase/client"
 import { formatDateShort } from "@/lib/utils"
 import type { Photo, Match } from "@/types"
-import { Image, Upload, X } from "lucide-react"
+import { Image as ImageIcon, Upload, X } from "lucide-react"
+import { toast } from "sonner"
 
 export default function PhotosPage() {
   const [photos, setPhotos] = useState<(Photo & { match: Match })[]>([])
@@ -22,13 +23,8 @@ export default function PhotosPage() {
       const { data: { user } } = await supabase.auth.getUser()
 
       if (user) {
-        const { data: roleData } = await supabase
-          .from("profile_roles")
-          .select("roles(name)")
-          .eq("profile_id", user.id)
-        if (roleData) {
-          setIsAdmin(roleData.some((pr: any) => pr.roles?.name === "admin" || pr.roles?.name === "super_admin"))
-        }
+        const { data: isAdminUser } = await supabase.rpc("is_admin", { user_id: user.id })
+        setIsAdmin(!!isAdminUser)
       }
 
       const { data: matchData } = await supabase
@@ -57,7 +53,10 @@ export default function PhotosPage() {
     setUploading(true)
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    if (!user) {
+      setUploading(false)
+      return
+    }
 
     const fileName = `${selectedMatch}/${Date.now()}-${file.name}`
     const { data: uploadData, error } = await supabase.storage
@@ -65,6 +64,7 @@ export default function PhotosPage() {
       .upload(fileName, file)
 
     if (error || !uploadData) {
+      toast.error("Error al subir la foto")
       setUploading(false)
       return
     }
@@ -73,12 +73,19 @@ export default function PhotosPage() {
       .from("photos")
       .getPublicUrl(uploadData.path)
 
-    await supabase.from("photos").insert({
+    const { error: insertError } = await supabase.from("photos").insert({
       match_id: selectedMatch,
       profile_id: user.id,
       url: publicUrl,
     })
 
+    if (insertError) {
+      toast.error("Error al guardar la foto")
+      setUploading(false)
+      return
+    }
+
+    toast.success("Foto subida")
     const { data: newPhotos } = await supabase
       .from("photos")
       .select("*, match:matches(*)")
@@ -91,7 +98,11 @@ export default function PhotosPage() {
 
   async function handleDelete(photoId: string) {
     const supabase = createClient()
-    await supabase.from("photos").delete().eq("id", photoId)
+    const { error } = await supabase.from("photos").delete().eq("id", photoId)
+    if (error) {
+      toast.error("Error al borrar la foto")
+      return
+    }
     setPhotos((prev) => prev.filter((p) => p.id !== photoId))
   }
 
@@ -168,7 +179,7 @@ export default function PhotosPage() {
 
         {photos.length === 0 && (
           <div className="text-center py-12 text-gray-400">
-            <Image size={48} className="mx-auto mb-2" />
+            <ImageIcon size={48} className="mx-auto mb-2" aria-hidden />
             <p>No hay fotos todavía</p>
           </div>
         )}

@@ -4,7 +4,6 @@ import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Navbar from "@/components/Navbar"
 import { createClient } from "@/lib/supabase/client"
-import { formatCurrency } from "@/lib/utils"
 import type { Profile } from "@/types"
 import { ArrowLeft } from "lucide-react"
 
@@ -91,7 +90,7 @@ export default function PlayerDetailPage() {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-gray-900">{player.name}</h1>
-              {player.nickname && <p className="text-gray-400">"{player.nickname}"</p>}
+              {player.nickname && <p className="text-gray-400">“{player.nickname}”</p>}
               {player.position && <p className="text-sm text-gray-500">Posición: {player.position}</p>}
               {player.phone && <p className="text-sm text-gray-500">📱 {player.phone}</p>}
             </div>

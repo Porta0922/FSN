@@ -4,7 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
-import { TEAM_NAME, TEAM_SIGLAS } from "@/lib/constants"
+import { TEAM_NAME } from "@/lib/constants"
 
 export default function LoginPage() {
   const router = useRouter()

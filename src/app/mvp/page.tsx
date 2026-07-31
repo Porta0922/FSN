@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react"
 import Navbar from "@/components/Navbar"
 import { createClient } from "@/lib/supabase/client"
-import { formatDateShort, cn } from "@/lib/utils"
+import { formatDateShort } from "@/lib/utils"
 import type { Match, Profile } from "@/types"
+import { toast } from "sonner"
 
 interface MatchWithMVP extends Match {
   mvp: { name: string; votes: number } | null
@@ -30,6 +31,7 @@ export default function MVPPage() {
         .select("*")
         .eq("is_active", true)
       if (allPlayers) setPlayers(allPlayers)
+      const playerList = allPlayers || []
 
       const { data: matches } = await supabase
         .from("matches")
@@ -49,21 +51,20 @@ export default function MVPPage() {
 
           const { data: votes } = await supabase
             .from("mvp_votes")
-            .select("voted_id, profiles!voted_id(name)")
+            .select("voted_id")
             .eq("match_id", m.id)
 
           let mvp = null
           if (votes && votes.length > 0) {
-            const count: Record<string, { name: string; count: number }> = {}
-            votes.forEach((v: any) => {
-              const pid = v.voted_id
-              if (!count[pid]) count[pid] = { name: v.profiles?.name || "?", count: 0 }
-              count[pid].count++
+            const count: Record<string, number> = {}
+            votes.forEach((v) => {
+              count[v.voted_id] = (count[v.voted_id] || 0) + 1
             })
-            const top = Object.entries(count)
-              .map(([id, info]) => ({ name: info.name, votes: info.count }))
-              .sort((a, b) => b.votes - a.votes)[0]
-            mvp = top
+            const top = Object.entries(count).sort((a, b) => b[1] - a[1])[0]
+            const topPlayer = playerList.find((p) => p.id === top?.[0])
+            if (topPlayer) {
+              mvp = { name: topPlayer.nickname || topPlayer.name, votes: top[1] }
+            }
           }
 
           return {
@@ -84,12 +85,18 @@ export default function MVPPage() {
 
   async function handleVote(matchId: string, votedId: string) {
     const supabase = createClient()
-    await supabase.from("mvp_votes").insert({
+    const { error } = await supabase.from("mvp_votes").insert({
       match_id: matchId,
       voter_id: userId,
       voted_id: votedId,
     })
 
+    if (error) {
+      toast.error("No se pudo registrar el voto")
+      return
+    }
+
+    toast.success("Voto registrado")
     setPlayedMatches((prev) =>
       prev.map((m) =>
         m.id === matchId ? { ...m, canVote: false, hasVoted: true } : m

@@ -30,12 +30,15 @@ supabase start
 #   NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key>
 #   SUPABASE_SERVICE_ROLE_KEY=<service_role key>
 #   NEXT_PUBLIC_SITE_URL=http://localhost:3000
+#   CRON_SECRET=<secreto aleatorio para proteger el cron>
 
 # 4. Iniciar la app
 npm run dev
 ```
 
 Abrir [http://localhost:3000](http://localhost:3000).
+
+> **Nota:** después de un `git pull`, aplicá las migraciones nuevas con `supabase db push` (o `supabase migration up` para local). En producción, ejecutá `supabase db push` o aplicá los archivos en el SQL Editor.
 
 ### Primer usuario
 
@@ -83,4 +86,4 @@ src/
 
 ## Deploy
 
-Conectar repo a [Vercel](https://vercel.com). Las variables de entorno de Supabase (las de producción, no las locales) se configuran en Vercel. El cron job del primer día de cada mes se activa automáticamente via `vercel.json`.
+Conectar repo a [Vercel](https://vercel.com). Las variables de entorno de Supabase (las de producción, no las locales) se configuran en Vercel. El cron job del primer día de cada mes se activa automáticamente via `vercel.json` y envía el header `Authorization: Bearer <CRON_SECRET>` (configurá `CRON_SECRET` como variable de entorno en Vercel).

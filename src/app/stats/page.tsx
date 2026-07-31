@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react"
 import Navbar from "@/components/Navbar"
 import { createClient } from "@/lib/supabase/client"
-import type { Profile } from "@/types"
 import { Trophy, Target } from "lucide-react"
 
 interface PlayerStats {
@@ -25,41 +24,14 @@ export default function StatsPage() {
     async function load() {
       const supabase = createClient()
 
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("id, name, nickname")
+      const { data } = await supabase
+        .from("player_stats")
+        .select("id, name, nickname, goals, assists, matches")
         .eq("is_active", true)
 
-      if (!profiles) { setLoading(false); return }
+      if (!data) { setLoading(false); return }
 
-      const stats: PlayerStats[] = await Promise.all(
-        profiles.map(async (p) => {
-          const { count: goals } = await supabase
-            .from("goals")
-            .select("*", { count: "exact", head: true })
-            .eq("scorer_id", p.id)
-
-          const { count: assists } = await supabase
-            .from("goals")
-            .select("*", { count: "exact", head: true })
-            .eq("assist_id", p.id)
-
-          const { count: matches } = await supabase
-            .from("attendance")
-            .select("*", { count: "exact", head: true })
-            .eq("profile_id", p.id)
-            .eq("status", "confirmed")
-
-          return {
-            id: p.id,
-            name: p.name,
-            nickname: p.nickname,
-            goals: goals || 0,
-            assists: assists || 0,
-            matches: matches || 0,
-          }
-        })
-      )
+      const stats = data as PlayerStats[]
 
       setTopScorers([...stats].sort((a, b) => b.goals - a.goals).filter(s => s.goals > 0))
       setTopAssists([...stats].sort((a, b) => b.assists - a.assists).filter(s => s.assists > 0))

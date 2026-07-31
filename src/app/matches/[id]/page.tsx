@@ -5,8 +5,10 @@ import { useParams, useRouter } from "next/navigation"
 import Navbar from "@/components/Navbar"
 import { createClient } from "@/lib/supabase/client"
 import { formatDate, formatCurrency, getStatusColor, getStatusLabel, cn } from "@/lib/utils"
-import type { Match, AttendanceWithProfile, GoalWithProfiles, PaymentWithProfile, Photo, Expense } from "@/types"
-import { ArrowLeft, DollarSign, Image, Target, Users } from "lucide-react"
+import { FINE_PERCENTAGE } from "@/lib/constants"
+import type { Match, AttendanceWithProfile, GoalWithProfiles, PaymentWithProfile, Expense, FineWithProfile } from "@/types"
+import { ArrowLeft, DollarSign, Target, Users } from "lucide-react"
+import { toast } from "sonner"
 
 export default function MatchDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -15,30 +17,23 @@ export default function MatchDetailPage() {
   const [attendance, setAttendance] = useState<AttendanceWithProfile[]>([])
   const [goals, setGoals] = useState<GoalWithProfiles[]>([])
   const [payments, setPayments] = useState<PaymentWithProfile[]>([])
-  const [photos, setPhotos] = useState<Photo[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
+  const [fines, setFines] = useState<FineWithProfile[]>([])
   const [isAdmin, setIsAdmin] = useState(false)
-  const [userId, setUserId] = useState<string | null>(null)
   const [newGoalScorer, setNewGoalScorer] = useState("")
   const [newGoalAssist, setNewGoalAssist] = useState("")
   const [mvp, setMvp] = useState<{ id: string; name: string; votes: number } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     async function load() {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
-      setUserId(user.id)
 
-      const { data: roleData } = await supabase
-        .from("profile_roles")
-        .select("roles(name)")
-        .eq("profile_id", user.id)
-
-      if (roleData) {
-        setIsAdmin(roleData.some((pr: any) => pr.roles?.name === "admin" || pr.roles?.name === "super_admin"))
-      }
+      const { data: isAdminUser } = await supabase.rpc("is_admin", { user_id: user.id })
+      setIsAdmin(!!isAdminUser)
 
       const { data: matchData } = await supabase
         .from("matches")
@@ -69,13 +64,6 @@ export default function MatchDetailPage() {
 
       if (payData) setPayments(payData)
 
-      const { data: photoData } = await supabase
-        .from("photos")
-        .select("*")
-        .eq("match_id", id)
-
-      if (photoData) setPhotos(photoData)
-
       const { data: expData } = await supabase
         .from("expenses")
         .select("*")
@@ -83,15 +71,23 @@ export default function MatchDetailPage() {
 
       if (expData) setExpenses(expData)
 
-      // Get MVP (most voted)
+      const { data: fineData } = await supabase
+        .from("fines")
+        .select("*, profiles(*)")
+        .eq("match_id", id)
+
+      if (fineData) setFines(fineData)
+
       const { data: votes } = await supabase
         .from("mvp_votes")
         .select("voted_id, profiles!voted_id(name)")
         .eq("match_id", id)
 
-      if (votes && votes.length > 0) {
+      const typedVotes = votes as unknown as { voted_id: string; profiles: { name: string } | null }[] | null
+
+      if (typedVotes && typedVotes.length > 0) {
         const voteCount: Record<string, { name: string; count: number }> = {}
-        votes.forEach((v: any) => {
+        typedVotes.forEach((v) => {
           const pid = v.voted_id
           if (!voteCount[pid]) voteCount[pid] = { name: v.profiles?.name || "?", count: 0 }
           voteCount[pid].count++
@@ -106,36 +102,97 @@ export default function MatchDetailPage() {
     }
 
     load()
-  }, [id])
+  }, [id, reloadKey])
 
   async function handleStatusChange(newStatus: string) {
     const supabase = createClient()
-    await supabase.from("matches").update({ status: newStatus }).eq("id", id)
-    setMatch((prev) => prev ? { ...prev, status: newStatus as any } : null)
+    const { error } = await supabase.from("matches").update({ status: newStatus }).eq("id", id)
+    if (error) {
+      toast.error("Error al cambiar el estado")
+      return
+    }
+    setMatch((prev) => prev ? { ...prev, status: newStatus as Match["status"] } : null)
+    setReloadKey((k) => k + 1)
   }
 
   async function handleAddGoal() {
     if (!newGoalScorer) return
     const supabase = createClient()
-    await supabase.from("goals").insert({
+    const { error } = await supabase.from("goals").insert({
       match_id: id,
       scorer_id: newGoalScorer,
       assist_id: newGoalAssist || null,
     })
+    if (error) {
+      toast.error("Error al cargar el gol")
+      return
+    }
     setNewGoalScorer("")
     setNewGoalAssist("")
-    // Reload goals
     const { data } = await supabase
       .from("goals")
       .select("*, scorer:profiles!scorer_id(*), assist:profiles!assist_id(*)")
       .eq("match_id", id)
     if (data) setGoals(data)
+    toast.success("Gol cargado")
   }
 
   async function handleDeleteGoal(goalId: string) {
     const supabase = createClient()
-    await supabase.from("goals").delete().eq("id", goalId)
+    const { error } = await supabase.from("goals").delete().eq("id", goalId)
+    if (error) {
+      toast.error("Error al borrar el gol")
+      return
+    }
     setGoals((prev) => prev.filter((g) => g.id !== goalId))
+    toast.success("Gol eliminado")
+  }
+
+  async function handleMarkNoShow(att: AttendanceWithProfile) {
+    const supabase = createClient()
+    const { data: existing } = await supabase
+      .from("fines")
+      .select("id")
+      .eq("match_id", id)
+      .eq("profile_id", att.profile_id)
+      .limit(1)
+
+    if (existing && existing.length > 0) {
+      toast.error("Ya tiene una multa registrada")
+      return
+    }
+
+    const { error: attErr } = await supabase
+      .from("attendance")
+      .update({ status: "no_show" })
+      .eq("id", att.id)
+
+    if (attErr) {
+      toast.error("Error al marcar no-show")
+      return
+    }
+
+    const amount = Math.floor((match?.cost || 0) / (confirmedPlayers.length || 1)) * FINE_PERCENTAGE
+    await supabase.from("fines").insert({
+      match_id: id,
+      profile_id: att.profile_id,
+      amount,
+      reason: "No show sin aviso",
+      paid: false,
+    })
+
+    setReloadKey((k) => k + 1)
+    toast.success(`${att.profiles.nickname || att.profiles.name} marcado como no-show`)
+  }
+
+  async function handleToggleFinePaid(fine: FineWithProfile) {
+    const supabase = createClient()
+    const { error } = await supabase.from("fines").update({ paid: !fine.paid }).eq("id", fine.id)
+    if (error) {
+      toast.error("Error al actualizar la multa")
+      return
+    }
+    setReloadKey((k) => k + 1)
   }
 
   const confirmedPlayers = attendance.filter((a) => a.status === "confirmed")
@@ -228,9 +285,20 @@ export default function MatchDetailPage() {
                       {a.profiles.nickname || a.profiles.name}
                     </span>
                   </div>
-                  <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium", getStatusColor(a.status))}>
-                    {getStatusLabel(a.status)}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium", getStatusColor(a.status))}>
+                      {getStatusLabel(a.status)}
+                    </span>
+                    {isAdmin && match.status === "played" && a.status === "confirmed" && (
+                      <button
+                        onClick={() => handleMarkNoShow(a)}
+                        className="text-xs text-orange-600 hover:text-orange-800 font-medium"
+                        title="Marcar como no-show (crea multa)"
+                      >
+                        No-show
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
 
@@ -378,6 +446,39 @@ export default function MatchDetailPage() {
                   Sin votos todavía
                 </p>
               )}
+            </div>
+          )}
+
+          {/* Fines */}
+          {isAdmin && fines.length > 0 && (
+            <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+              <h2 className="font-semibold text-gray-900 mb-3">Multas</h2>
+              <div className="space-y-2">
+                {fines.map((f) => (
+                  <div key={f.id} className="flex items-center justify-between p-2 rounded-lg bg-gray-50">
+                    <div>
+                      <span className="text-sm font-medium text-gray-700">
+                        {f.profiles.nickname || f.profiles.name}
+                      </span>
+                      <p className="text-xs text-gray-400">{f.reason}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-red-600">{formatCurrency(f.amount)}</span>
+                      <button
+                        onClick={() => handleToggleFinePaid(f)}
+                        className={cn(
+                          "px-2 py-1 rounded-lg text-xs font-medium transition-colors",
+                          f.paid
+                            ? "bg-green-100 text-green-700"
+                            : "bg-yellow-100 text-yellow-700 hover:bg-yellow-200"
+                        )}
+                      >
+                        {f.paid ? "Pagada" : "Pendiente"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

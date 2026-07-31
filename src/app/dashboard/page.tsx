@@ -5,7 +5,7 @@ import Link from "next/link"
 import Navbar from "@/components/Navbar"
 import { createClient } from "@/lib/supabase/client"
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from "@/lib/utils"
-import { CalendarDays, Users, DollarSign, Trophy, ArrowRight, CircleDot } from "lucide-react"
+import { CalendarDays, Users, Trophy, ArrowRight, CircleDot } from "lucide-react"
 import type { Match, Profile } from "@/types"
 
 export default function DashboardPage() {
@@ -29,10 +29,13 @@ export default function DashboardPage() {
 
       setUser(profile)
 
+      const today = new Date()
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`
+
       const { data: matches } = await supabase
         .from("matches")
         .select("*")
-        .gte("date", new Date().toISOString().split("T")[0])
+        .gte("date", todayStr)
         .eq("status", "scheduled")
         .order("date", { ascending: true })
         .limit(1)

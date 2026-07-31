@@ -11,7 +11,7 @@ import { toast } from "sonner"
 export default function PlayersPage() {
   const [players, setPlayers] = useState<Profile[]>([])
   const [adminIds, setAdminIds] = useState<Set<string>>(new Set())
-  const [isAdmin, setIsAdmin] = useState(false)
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -20,8 +20,8 @@ export default function PlayersPage() {
       const { data: { user } } = await supabase.auth.getUser()
 
       if (user) {
-        const { data: isAdminUser } = await supabase.rpc("is_admin", { user_id: user.id })
-        setIsAdmin(!!isAdminUser)
+        const { data: isSuperAdminUser } = await supabase.rpc("is_super_admin", { user_id: user.id })
+        setIsSuperAdmin(!!isSuperAdminUser)
 
         const { data: allRoles } = await supabase.from("roles").select("id, name")
         const adminRoleIds = allRoles?.filter((r) => ["admin", "super_admin"].includes(r.name)).map((r) => r.id) || []
@@ -43,6 +43,11 @@ export default function PlayersPage() {
   }, [])
 
   async function toggleAdmin(playerId: string, makeAdmin: boolean) {
+    if (!isSuperAdmin) {
+      toast.error("Solo el super admin puede cambiar roles")
+      return
+    }
+
     const supabase = createClient()
     const { data: roleData } = await supabase
       .from("roles")
@@ -53,11 +58,19 @@ export default function PlayersPage() {
     if (!roleData) return
 
     if (makeAdmin) {
-      await supabase.from("profile_roles").insert({ profile_id: playerId, role_id: roleData.id })
+      const { error } = await supabase.from("profile_roles").insert({ profile_id: playerId, role_id: roleData.id })
+      if (error) {
+        toast.error("Error al cambiar el rol")
+        return
+      }
       setAdminIds((prev) => new Set(prev).add(playerId))
       toast.success("Jugador promovido a admin")
     } else {
-      await supabase.from("profile_roles").delete().eq("profile_id", playerId).eq("role_id", roleData.id)
+      const { error } = await supabase.from("profile_roles").delete().eq("profile_id", playerId).eq("role_id", roleData.id)
+      if (error) {
+        toast.error("Error al cambiar el rol")
+        return
+      }
       setAdminIds((prev) => { const next = new Set(prev); next.delete(playerId); return next })
       toast.success("Admin revocado")
     }
@@ -91,7 +104,7 @@ export default function PlayersPage() {
                   <p className="text-xs text-gray-400">{player.position}</p>
                 )}
               </Link>
-              {isAdmin && (
+              {isSuperAdmin && (
                 <button
                   onClick={() => toggleAdmin(player.id, !adminIds.has(player.id))}
                   className={`mt-2 w-full flex items-center justify-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
