@@ -73,14 +73,15 @@ src/
 
 ## Features
 
-- Partidos semanales automáticos (cada lunes)
+- Partidos automáticos por mes (el admin elige mes y año)
 - Asistencias: confirmar / declinar / no-show
 - Carga de goles con asistencias
 - Pago de cancha con comprobante y aprobación
 - Multas por no-show sin aviso
-- Votación MVP por partido
-- Estadísticas: goleadores, asistencias, presencias
-- Galería de fotos por partido
+- Votación MVP: 2 MVPs por partido (solo presentes), tabla general anual con puntos
+- Estadísticas mensuales con exportación CSV
+- Perfil editable con foto de perfil
+- Galería de fotos: todos suben (máx. 3 por partido)
 - Roles: super_admin, admin, jugador
 - Costo fijo: Gs. 180.000/hora (configurable)
 

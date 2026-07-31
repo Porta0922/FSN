@@ -22,7 +22,7 @@ export default function MatchDetailPage() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [newGoalScorer, setNewGoalScorer] = useState("")
   const [newGoalAssist, setNewGoalAssist] = useState("")
-  const [mvp, setMvp] = useState<{ id: string; name: string; votes: number } | null>(null)
+  const [mvp, setMvp] = useState<{ id: string; name: string; votes: number; points: number }[]>([])
   const [loading, setLoading] = useState(true)
   const [reloadKey, setReloadKey] = useState(0)
 
@@ -92,10 +92,19 @@ export default function MatchDetailPage() {
           if (!voteCount[pid]) voteCount[pid] = { name: v.profiles?.name || "?", count: 0 }
           voteCount[pid].count++
         })
+        const { data: cfg } = await supabase
+          .from("team_config")
+          .select("mvp_points_first, mvp_points_second")
+          .limit(1)
+          .single()
+        const firstPts = cfg?.mvp_points_first ?? 3
+        const secondPts = cfg?.mvp_points_second ?? 1
+
         const top = Object.entries(voteCount)
-          .map(([id, info]) => ({ id, name: info.name, votes: info.count }))
-          .sort((a, b) => b.votes - a.votes)[0]
-        if (top) setMvp(top)
+          .map(([pid, info]) => ({ id: pid, name: info.name, votes: info.count }))
+          .sort((a, b) => b.votes - a.votes)
+          .slice(0, 2)
+        setMvp(top.map((t, i) => ({ ...t, points: i === 0 ? firstPts : secondPts })))
       }
 
       setLoading(false)
@@ -435,11 +444,25 @@ export default function MatchDetailPage() {
                 <h2 className="font-semibold text-gray-900">MVP</h2>
               </div>
 
-              {mvp ? (
-                <div className="text-center p-4 bg-yellow-50 rounded-xl">
-                  <p className="text-3xl mb-1">🏆</p>
-                  <p className="text-lg font-bold text-gray-900">{mvp.name}</p>
-                  <p className="text-sm text-gray-500">{mvp.votes} voto{mvp.votes !== 1 ? "s" : ""}</p>
+              {mvp.length > 0 ? (
+                <div className="space-y-2">
+                  {mvp.map((m, i) => (
+                    <div
+                      key={m.id}
+                      className={`flex items-center justify-between p-3 rounded-xl ${i === 0 ? "bg-yellow-50" : "bg-gray-50"}`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-xl">{i === 0 ? "🥇" : "🥈"}</span>
+                        <p className="font-bold text-gray-900">{m.name}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-gray-700">
+                          {m.votes} voto{m.votes !== 1 ? "s" : ""}
+                        </p>
+                        <p className="text-xs text-gray-400">+{m.points} pts</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <p className="text-sm text-gray-400 text-center py-4">

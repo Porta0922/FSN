@@ -8,11 +8,21 @@ import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from "@/li
 import { CalendarDays, Users, Trophy, ArrowRight, CircleDot } from "lucide-react"
 import type { Match, Profile } from "@/types"
 
+interface MvpStanding {
+  profile_id: string
+  name: string
+  nickname: string | null
+  points: number
+  mvp_wins: number
+  second_places: number
+}
+
 export default function DashboardPage() {
   const [user, setUser] = useState<Profile | null>(null)
   const [nextMatch, setNextMatch] = useState<Match | null>(null)
   const [myAttendance, setMyAttendance] = useState<string | null>(null)
   const [stats, setStats] = useState({ totalMatches: 0, totalGoals: 0, attendance: 0 })
+  const [mvpStandings, setMvpStandings] = useState<MvpStanding[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -77,6 +87,11 @@ export default function DashboardPage() {
         totalGoals: goalCount || 0,
         attendance: myConfirmed && myConfirmed > 0 ? Math.round((myConfirmed / (myMatches || 1)) * 100) : 0,
       })
+
+      const { data: standings } = await supabase.rpc("mvp_standings_for_year", {
+        target_year: today.getFullYear(),
+      })
+      setMvpStandings((standings || []) as MvpStanding[])
 
       setLoading(false)
     }
@@ -165,8 +180,12 @@ export default function DashboardPage() {
                 <Trophy size={20} className="text-yellow-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-gray-900">-</p>
-                <p className="text-xs text-gray-500">MVP</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {mvpStandings[0]?.nickname || mvpStandings[0]?.name || "-"}
+                </p>
+                <p className="text-xs text-gray-500">
+                  Líder MVP {mvpStandings[0] ? `(${mvpStandings[0].points} pts)` : ""}
+                </p>
               </div>
             </div>
           </div>
@@ -185,15 +204,35 @@ export default function DashboardPage() {
                 <p className="text-sm text-gray-500">Subí tu comprobante de pago</p>
               </Link>
               <Link href="/stats" className="block p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
-                <p className="font-medium text-gray-900">📊 Mis estadísticas</p>
+                <p className="font-medium text-gray-900">📊 Estadísticas del mes</p>
                 <p className="text-sm text-gray-500">Goles, asistencias y más</p>
               </Link>
             </div>
           </div>
 
           <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-            <h2 className="font-semibold text-gray-900 mb-3">Top goleadores</h2>
-            <p className="text-sm text-gray-400">Cargá goles en los partidos para ver el ranking.</p>
+            <h2 className="font-semibold text-gray-900 mb-3">🏆 Tabla general MVP</h2>
+            <div className="space-y-2">
+              {mvpStandings.slice(0, 10).map((s, i) => (
+                <div key={s.profile_id} className="flex items-center justify-between p-2 rounded-lg bg-gray-50">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${i === 0 ? "bg-yellow-100 text-yellow-700" : i === 1 ? "bg-gray-200 text-gray-600" : i === 2 ? "bg-orange-100 text-orange-700" : "bg-gray-100 text-gray-500"}`}>
+                      {i + 1}
+                    </span>
+                    <span className="text-sm font-medium text-gray-700">{s.nickname || s.name}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400">
+                      🏆 {s.mvp_wins} {s.mvp_wins === 1 ? "vez" : "veces"}
+                    </span>
+                    <span className="text-sm font-bold text-yellow-600">{s.points} pts</span>
+                  </div>
+                </div>
+              ))}
+              {mvpStandings.length === 0 && (
+                <p className="text-sm text-gray-400">Aún no hay votos cargados.</p>
+              )}
+            </div>
           </div>
         </div>
       </main>

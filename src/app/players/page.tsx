@@ -94,9 +94,17 @@ export default function PlayersPage() {
           {players.map((player) => (
             <div key={player.id} className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 relative">
               <Link href={`/players/${player.id}`}>
-                <div className="w-12 h-12 bg-primary rounded-full flex items-center justify-center text-white font-bold text-lg mb-2">
-                  {(player.nickname || player.name).charAt(0).toUpperCase()}
-                </div>
+                {player.avatar_url ? (
+                  <img
+                    src={player.avatar_url}
+                    alt={`Foto de ${player.name}`}
+                    className="w-12 h-12 rounded-full object-cover mb-2"
+                  />
+                ) : (
+                  <div className="w-12 h-12 bg-primary rounded-full flex items-center justify-center text-white font-bold text-lg mb-2">
+                    {(player.nickname || player.name).charAt(0).toUpperCase()}
+                  </div>
+                )}
                 <p className="font-medium text-gray-900 text-sm truncate">
                   {player.nickname || player.name}
                 </p>

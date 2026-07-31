@@ -131,6 +131,8 @@ export interface TeamConfig {
   default_duration_minutes: number
   default_day_of_week: number
   fine_percentage: number
+  mvp_points_first: number
+  mvp_points_second: number
   created_at: string
   updated_at: string
 }

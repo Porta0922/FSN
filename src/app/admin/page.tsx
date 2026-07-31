@@ -8,6 +8,21 @@ import { ROLES } from "@/lib/constants"
 import type { Profile, TeamConfig } from "@/types"
 import { toast } from "sonner"
 
+const MONTHS = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+]
+
+const WEEKDAYS = [
+  { value: 0, label: "Domingo" },
+  { value: 1, label: "Lunes" },
+  { value: 2, label: "Martes" },
+  { value: 3, label: "Miércoles" },
+  { value: 4, label: "Jueves" },
+  { value: 5, label: "Viernes" },
+  { value: 6, label: "Sábado" },
+]
+
 export default function AdminPage() {
   const router = useRouter()
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
@@ -15,6 +30,11 @@ export default function AdminPage() {
   const [config, setConfig] = useState<TeamConfig | null>(null)
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
+
+  const now = new Date()
+  const [genYear, setGenYear] = useState(now.getFullYear())
+  const [genMonth, setGenMonth] = useState(now.getMonth() + 1)
+  const years = [now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1]
 
   useEffect(() => {
     async function load() {
@@ -109,9 +129,13 @@ export default function AdminPage() {
   async function handleGenerateMatches() {
     setGenerating(true)
     try {
-      const res = await fetch("/api/cron/generate-matches")
+      const res = await fetch(`/api/cron/generate-matches?year=${genYear}&month=${genMonth}`)
       const data = await res.json()
-      toast.success(`Se crearon ${data.created || 0} partidos`)
+      if (data.error) {
+        toast.error(`Error: ${data.error}`)
+      } else {
+        toast.success(`Se crearon ${data.created || 0} partidos`)
+      }
     } catch {
       toast.error("Error al generar partidos")
     }
@@ -121,7 +145,11 @@ export default function AdminPage() {
   async function handleUpdateConfig(field: string, value: string | number | boolean | null) {
     if (!config) return
     const supabase = createClient()
-    await supabase.from("team_config").update({ [field]: value }).eq("id", config.id)
+    const { error } = await supabase.from("team_config").update({ [field]: value }).eq("id", config.id)
+    if (error) {
+      toast.error("Error al guardar la configuración")
+      return
+    }
     setConfig((prev) => prev ? { ...prev, [field]: value } : null)
     toast.success("Configuración actualizada")
   }
@@ -144,7 +172,7 @@ export default function AdminPage() {
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 mb-6">
           <h2 className="font-semibold text-gray-900 mb-4">Configuración del equipo</h2>
 
-          {config && (
+          {config ? (
             <div className="grid md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm text-gray-500 mb-1">Nombre del equipo</label>
@@ -196,7 +224,49 @@ export default function AdminPage() {
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
                 />
               </div>
+              <div>
+                <label className="block text-sm text-gray-500 mb-1">Día de partido</label>
+                <select
+                  defaultValue={config.default_day_of_week}
+                  onChange={(e) => handleUpdateConfig("default_day_of_week", parseInt(e.target.value))}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                >
+                  {WEEKDAYS.map((d) => (
+                    <option key={d.value} value={d.value}>{d.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-500 mb-1">% de multa por no-show (0-2)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  defaultValue={config.fine_percentage}
+                  onBlur={(e) => handleUpdateConfig("fine_percentage", parseFloat(e.target.value) || 1)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-500 mb-1">Puntos MVP 1º lugar</label>
+                <input
+                  type="number"
+                  defaultValue={config.mvp_points_first}
+                  onBlur={(e) => handleUpdateConfig("mvp_points_first", parseInt(e.target.value) || 3)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-500 mb-1">Puntos MVP 2º lugar</label>
+                <input
+                  type="number"
+                  defaultValue={config.mvp_points_second}
+                  onBlur={(e) => handleUpdateConfig("mvp_points_second", parseInt(e.target.value) || 1)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                />
+              </div>
             </div>
+          ) : (
+            <p className="text-sm text-gray-400">No se encontró configuración.</p>
           )}
         </div>
 
@@ -204,8 +274,34 @@ export default function AdminPage() {
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 mb-6">
           <h2 className="font-semibold text-gray-900 mb-3">Generar partidos del mes</h2>
           <p className="text-sm text-gray-500 mb-3">
-            Creá automáticamente todos los partidos del mes actual (solo los lunes).
+            Elegí el mes para crear automáticamente todos los partidos (solo en el día configurado).
           </p>
+          <div className="flex flex-wrap items-end gap-3 mb-3">
+            <div>
+              <label className="block text-sm text-gray-500 mb-1">Mes</label>
+              <select
+                value={genMonth}
+                onChange={(e) => setGenMonth(parseInt(e.target.value))}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
+              >
+                {MONTHS.map((m, i) => (
+                  <option key={m} value={i + 1}>{m}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-500 mb-1">Año</label>
+              <select
+                value={genYear}
+                onChange={(e) => setGenYear(parseInt(e.target.value))}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
+              >
+                {years.map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+          </div>
           <button
             onClick={handleGenerateMatches}
             disabled={generating}
