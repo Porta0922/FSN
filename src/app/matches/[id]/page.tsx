@@ -456,6 +456,14 @@ export default function MatchDetailPage() {
                   Reabrir
                 </button>
               )}
+              {match.status === "cancelled" && (
+                <button
+                  onClick={() => handleStatusChange("scheduled")}
+                  className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-blue-700"
+                >
+                  Rehabilitar partido
+                </button>
+              )}
             </div>
           )}
 

@@ -19,6 +19,7 @@ interface MvpStanding {
 
 export default function DashboardPage() {
   const [user, setUser] = useState<Profile | null>(null)
+  const [userId, setUserId] = useState<string | null>(null)
   const [nextMatch, setNextMatch] = useState<Match | null>(null)
   const [myAttendance, setMyAttendance] = useState<string | null>(null)
   const [stats, setStats] = useState({ totalMatches: 0, totalGoals: 0, attendance: 0 })
@@ -30,6 +31,8 @@ export default function DashboardPage() {
       const supabase = createClient()
       const { data: { user: authUser } } = await supabase.auth.getUser()
       if (!authUser) return
+
+      setUserId(authUser.id)
 
       const { data: profile } = await supabase
         .from("profiles")
@@ -112,9 +115,14 @@ export default function DashboardPage() {
       <Navbar />
       <main className="max-w-7xl mx-auto px-4 py-6">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">
-            Bienvenido, {user?.nickname || user?.name || "Jugador"}
-          </h1>
+          <Link
+            href={userId ? `/players/${userId}` : "/profile"}
+            className="inline-flex items-center gap-2 group"
+          >
+            <h1 className="text-2xl font-bold text-gray-900 group-hover:text-primary transition-colors">
+              Bienvenido, {user?.nickname || user?.name || "Jugador"} 👋
+            </h1>
+          </Link>
           <p className="text-gray-500 text-sm">Fútbol Sin Nivel ⚽</p>
         </div>
 
@@ -207,8 +215,8 @@ export default function DashboardPage() {
                 <p className="font-medium text-gray-900">📊 Estadísticas del mes</p>
                 <p className="text-sm text-gray-500">Goles, asistencias y más</p>
               </Link>
-              {user && (
-                <Link href={`/players/${user.id}`} className="block p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
+              {userId && (
+                <Link href={`/players/${userId}`} className="block p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
                   <p className="font-medium text-gray-900">👤 Mi perfil</p>
                   <p className="text-sm text-gray-500">Editar mis datos y foto</p>
                 </Link>
