@@ -123,6 +123,31 @@ export interface Expense {
   created_at: string
 }
 
+export type EncuentroTeam = "home" | "away"
+
+export interface EncuentroPlayer {
+  id: string
+  encuentro_id: string
+  profile_id: string
+  team: EncuentroTeam
+  goals: number
+  created_at: string
+  profile?: Profile | null
+}
+
+export interface Encuentro {
+  id: string
+  match_id: string
+  index: number
+  team_home_goals: number
+  team_away_goals: number
+  created_at: string
+}
+
+export interface EncuentroWithPlayers extends Encuentro {
+  players: EncuentroPlayer[]
+}
+
 export interface TeamConfig {
   id: string
   team_name: string

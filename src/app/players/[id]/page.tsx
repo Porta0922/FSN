@@ -56,6 +56,13 @@ export default function PlayerDetailPage() {
         .select("*", { count: "exact", head: true })
         .eq("scorer_id", id)
 
+      const { data: encGoals } = await supabase
+        .from("match_encuentro_players")
+        .select("goals")
+        .eq("profile_id", id)
+
+      const encGoalTotal = (encGoals || []).reduce((s, g) => s + (g.goals || 0), 0)
+
       const { count: assists } = await supabase
         .from("goals")
         .select("*", { count: "exact", head: true })
@@ -72,7 +79,7 @@ export default function PlayerDetailPage() {
         .eq("profile_id", id)
         .eq("status", "confirmed")
 
-      setStats({ goals: goals || 0, assists: assists || 0, matches: matches || 0, confirmed: confirmed || 0 })
+      setStats({ goals: (goals || 0) + encGoalTotal, assists: assists || 0, matches: matches || 0, confirmed: confirmed || 0 })
 
       const { data: attHistory } = await supabase
         .from("attendance")

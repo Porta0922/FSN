@@ -7,8 +7,19 @@ import { createClient } from "@/lib/supabase/client"
 import { formatDate, formatCurrency, getStatusColor, getStatusLabel, cn } from "@/lib/utils"
 import { FINE_PERCENTAGE } from "@/lib/constants"
 import type { Match, AttendanceWithProfile, GoalWithProfiles, PaymentWithProfile, Expense, FineWithProfile } from "@/types"
-import { ArrowLeft, DollarSign, Target, Users } from "lucide-react"
+import { ArrowLeft, DollarSign, Target, Users, Trophy } from "lucide-react"
 import { toast } from "sonner"
+
+interface EncuentroEditor {
+  id: string | null
+  index: number
+  homeGoals: number
+  awayGoals: number
+  homeTeam: string[]
+  awayTeam: string[]
+  goals: Record<string, number>
+  saved: boolean
+}
 
 export default function MatchDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -24,6 +35,7 @@ export default function MatchDetailPage() {
   const [newGoalAssist, setNewGoalAssist] = useState("")
   const [mvp, setMvp] = useState<{ id: string; name: string; votes: number; points: number }[]>([])
   const [score, setScore] = useState({ home: "", away: "" })
+  const [encuentros, setEncuentros] = useState<EncuentroEditor[]>([])
   const [loading, setLoading] = useState(true)
   const [reloadKey, setReloadKey] = useState(0)
 
@@ -56,6 +68,27 @@ export default function MatchDetailPage() {
         .eq("match_id", id)
 
       if (attData) setAttendance(attData)
+
+      const { data: encData } = await supabase
+        .from("match_encuentros")
+        .select("*, players:match_encuentro_players(*, profile:profiles(name, nickname))")
+        .eq("match_id", id)
+        .order("index", { ascending: true })
+
+      if (encData && encData.length > 0) {
+        setEncuentros(
+          (encData as unknown as { index: number; id: string; team_home_goals: number; team_away_goals: number; players: { profile_id: string; team: "home" | "away"; goals: number }[] }[]).map((e) => ({
+            id: e.id,
+            index: e.index,
+            homeGoals: e.team_home_goals,
+            awayGoals: e.team_away_goals,
+            homeTeam: e.players.filter((p) => p.team === "home").map((p) => p.profile_id),
+            awayTeam: e.players.filter((p) => p.team === "away").map((p) => p.profile_id),
+            goals: e.players.reduce((acc, p) => ({ ...acc, [p.profile_id]: p.goals }), {}),
+            saved: true,
+          }))
+        )
+      }
 
       const { data: goalsData } = await supabase
         .from("goals")
@@ -142,6 +175,128 @@ export default function MatchDetailPage() {
     }
     setMatch((prev) => prev ? { ...prev, home_score: home, away_score: away } : null)
     toast.success("Resultado guardado")
+  }
+
+  async function recomputeScore() {
+    const supabase = createClient()
+    const { data: encs } = await supabase
+      .from("match_encuentros")
+      .select("team_home_goals, team_away_goals")
+      .eq("match_id", id)
+
+    if (!encs) return
+    const home = encs.filter((e) => e.team_home_goals > e.team_away_goals).length
+    const away = encs.filter((e) => e.team_away_goals > e.team_home_goals).length
+
+    const { error } = await supabase.from("matches").update({ home_score: home, away_score: away }).eq("id", id)
+    if (error) return
+    setMatch((prev) => prev ? { ...prev, home_score: home, away_score: away } : null)
+    setScore({ home: home ? String(home) : "", away: away ? String(away) : "" })
+  }
+
+  function handleAddEncuentro() {
+    const nextIndex = encuentros.length > 0 ? Math.max(...encuentros.map((e) => e.index)) + 1 : 1
+    const pool = confirmedPlayers.map((a) => a.profile_id)
+    setEncuentros((prev) => [
+      ...prev,
+      {
+        id: null,
+        index: nextIndex,
+        homeGoals: 0,
+        awayGoals: 0,
+        homeTeam: pool.slice(0, 7),
+        awayTeam: pool.slice(7, 14),
+        goals: {},
+        saved: false,
+      },
+    ])
+  }
+
+  function toggleEncuentroPlayer(ed: EncuentroEditor, pid: string) {
+    setEncuentros((prev) =>
+      prev.map((e) => {
+        if (e.index !== ed.index) return e
+        if (e.homeTeam.includes(pid)) {
+          if (e.awayTeam.length >= 7) return e
+          return { ...e, homeTeam: e.homeTeam.filter((p) => p !== pid), awayTeam: [...e.awayTeam, pid] }
+        }
+        if (e.awayTeam.includes(pid)) {
+          return { ...e, awayTeam: e.awayTeam.filter((p) => p !== pid) }
+        }
+        if (e.homeTeam.length < 7) return { ...e, homeTeam: [...e.homeTeam, pid] }
+        if (e.awayTeam.length < 7) return { ...e, awayTeam: [...e.awayTeam, pid] }
+        return e
+      })
+    )
+  }
+
+  function setEncuentroGoals(ed: EncuentroEditor, pid: string, value: string) {
+    const goals = Math.max(0, parseInt(value) || 0)
+    setEncuentros((prev) =>
+      prev.map((e) => (e.index === ed.index ? { ...e, goals: { ...e.goals, [pid]: goals } } : e))
+    )
+  }
+
+  async function handleSaveEncuentro(ed: EncuentroEditor) {
+    const supabase = createClient()
+    let encuentroId = ed.id
+
+    if (!encuentroId) {
+      const { data, error } = await supabase
+        .from("match_encuentros")
+        .insert({ match_id: id, index: ed.index, team_home_goals: ed.homeGoals, team_away_goals: ed.awayGoals })
+        .select("id")
+        .single()
+      if (error || !data) {
+        toast.error("Error al crear el encuentro")
+        return
+      }
+      encuentroId = data.id
+    } else {
+      const { error } = await supabase
+        .from("match_encuentros")
+        .update({ team_home_goals: ed.homeGoals, team_away_goals: ed.awayGoals })
+        .eq("id", encuentroId)
+      if (error) {
+        toast.error("Error al guardar el encuentro")
+        return
+      }
+    }
+
+    const playerRows = [
+      ...ed.homeTeam.map((pid) => ({ encuentro_id: encuentroId, profile_id: pid, team: "home" as const, goals: ed.goals[pid] || 0 })),
+      ...ed.awayTeam.map((pid) => ({ encuentro_id: encuentroId, profile_id: pid, team: "away" as const, goals: ed.goals[pid] || 0 })),
+    ]
+
+    await supabase.from("match_encuentro_players").delete().eq("encuentro_id", encuentroId)
+
+    if (playerRows.length > 0) {
+      const { error } = await supabase.from("match_encuentro_players").insert(playerRows)
+      if (error) {
+        toast.error("Error al guardar los equipos")
+        return
+      }
+    }
+
+    setEncuentros((prev) => prev.map((e) => (e.index === ed.index ? { ...e, id: encuentroId, saved: true } : e)))
+    await recomputeScore()
+    toast.success("Encuentro guardado")
+  }
+
+  async function handleDeleteEncuentro(ed: EncuentroEditor) {
+    if (!ed.id) {
+      setEncuentros((prev) => prev.filter((e) => e.index !== ed.index))
+      return
+    }
+    const supabase = createClient()
+    const { error } = await supabase.from("match_encuentros").delete().eq("id", ed.id)
+    if (error) {
+      toast.error("Error al borrar el encuentro")
+      return
+    }
+    setEncuentros((prev) => prev.filter((e) => e.index !== ed.index))
+    await recomputeScore()
+    toast.success("Encuentro eliminado")
   }
 
   async function handleAddGoal() {
@@ -264,6 +419,9 @@ export default function MatchDetailPage() {
               {match.status === "played" && match.home_score != null && match.away_score != null && (
                 <p className="text-lg font-bold text-gray-900 mt-1">
                   Resultado: {match.home_score} - {match.away_score}
+                  {encuentros.length > 0 && (
+                    <span className="text-sm font-normal text-gray-400"> por encuentros ganados</span>
+                  )}
                 </p>
               )}
             </div>
@@ -301,7 +459,7 @@ export default function MatchDetailPage() {
             </div>
           )}
 
-          {isAdmin && match.status === "played" && (
+          {isAdmin && match.status === "played" && encuentros.length === 0 && (
             <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-gray-100">
               <span className="text-sm text-gray-500">Resultado:</span>
               <input
@@ -329,6 +487,207 @@ export default function MatchDetailPage() {
               </button>
             </div>
           )}
+        </div>
+
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Trophy size={20} className="text-primary" />
+              <h2 className="font-semibold text-gray-900">Encuentros</h2>
+              <span className="text-sm text-gray-400">(7v7 · 10 min)</span>
+            </div>
+            {isAdmin && (
+              <button
+                onClick={handleAddEncuentro}
+                className="bg-primary text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-primary-light"
+              >
+                + Agregar encuentro
+              </button>
+            )}
+          </div>
+
+          {encuentros.length === 0 && (
+            <p className="text-sm text-gray-400 text-center py-4">
+              Todavía no se cargaron encuentros
+              {isAdmin ? ". Agregá los mini partidos que se jugaron." : "."}
+            </p>
+          )}
+
+          <div className="space-y-4">
+            {encuentros.map((ed) => {
+              const winner = ed.homeGoals > ed.awayGoals ? "home" : ed.awayGoals > ed.homeGoals ? "away" : "draw"
+              return (
+                <div key={ed.index} className="border border-gray-200 rounded-xl p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-gray-900">Encuentro #{ed.index}</p>
+                      <span className="text-xs text-gray-400">10 min</span>
+                      {winner === "home" && (
+                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">Ganamos</span>
+                      )}
+                      {winner === "away" && (
+                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-700">Perdimos</span>
+                      )}
+                      {winner === "draw" && (
+                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">Empate</span>
+                      )}
+                    </div>
+                    {isAdmin && (
+                      <button
+                        onClick={() => handleDeleteEncuentro(ed)}
+                        className="text-red-400 hover:text-red-600 text-sm"
+                      >
+                        Eliminar
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className="text-sm font-medium text-gray-600">Nuestros</span>
+                    {isAdmin ? (
+                      <input
+                        type="number"
+                        min={0}
+                        value={ed.homeGoals}
+                        onChange={(e) => {
+                          const v = Math.max(0, parseInt(e.target.value) || 0)
+                          setEncuentros((prev) => prev.map((x) => (x.index === ed.index ? { ...x, homeGoals: v } : x)))
+                        }}
+                        className="w-16 px-2 py-1 border border-gray-200 rounded-lg text-sm text-center"
+                      />
+                    ) : (
+                      <span className="text-sm font-bold text-gray-900 w-10 text-center">{ed.homeGoals}</span>
+                    )}
+                    <span className="text-gray-400">-</span>
+                    {isAdmin ? (
+                      <input
+                        type="number"
+                        min={0}
+                        value={ed.awayGoals}
+                        onChange={(e) => {
+                          const v = Math.max(0, parseInt(e.target.value) || 0)
+                          setEncuentros((prev) => prev.map((x) => (x.index === ed.index ? { ...x, awayGoals: v } : x)))
+                        }}
+                        className="w-16 px-2 py-1 border border-gray-200 rounded-lg text-sm text-center"
+                      />
+                    ) : (
+                      <span className="text-sm font-bold text-gray-900 w-10 text-center">{ed.awayGoals}</span>
+                    )}
+                    <span className="text-sm font-medium text-gray-600">Rival</span>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs font-semibold text-blue-600 uppercase mb-2">
+                        Equipo A (nosotros) · {ed.homeTeam.length}/7
+                      </p>
+                      <div className="space-y-1.5">
+                        {ed.homeTeam.map((pid) => {
+                          const a = attendance.find((x) => x.profile_id === pid)
+                          return (
+                            <div key={pid} className="flex items-center justify-between bg-blue-50 rounded-lg px-2 py-1">
+                              <span className="text-sm text-gray-700">
+                                {a?.profiles.nickname || a?.profiles.name || "?"}
+                              </span>
+                              {isAdmin ? (
+                                <div className="flex items-center gap-1">
+                                  <span className="text-xs text-gray-400">⚽</span>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    value={ed.goals[pid] ?? 0}
+                                    onChange={(e) => setEncuentroGoals(ed, pid, e.target.value)}
+                                    className="w-12 px-1 py-0.5 border border-gray-200 rounded text-sm text-center"
+                                  />
+                                </div>
+                              ) : (
+                                <span className="text-sm font-semibold text-gray-700">⚽ {ed.goals[pid] ?? 0}</span>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-red-600 uppercase mb-2">
+                        Equipo B (rival) · {ed.awayTeam.length}/7
+                      </p>
+                      <div className="space-y-1.5">
+                        {ed.awayTeam.map((pid) => {
+                          const a = attendance.find((x) => x.profile_id === pid)
+                          return (
+                            <div key={pid} className="flex items-center justify-between bg-red-50 rounded-lg px-2 py-1">
+                              <span className="text-sm text-gray-700">
+                                {a?.profiles.nickname || a?.profiles.name || "?"}
+                              </span>
+                              {isAdmin ? (
+                                <div className="flex items-center gap-1">
+                                  <span className="text-xs text-gray-400">⚽</span>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    value={ed.goals[pid] ?? 0}
+                                    onChange={(e) => setEncuentroGoals(ed, pid, e.target.value)}
+                                    className="w-12 px-1 py-0.5 border border-gray-200 rounded text-sm text-center"
+                                  />
+                                </div>
+                              ) : (
+                                <span className="text-sm font-semibold text-gray-700">⚽ {ed.goals[pid] ?? 0}</span>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {isAdmin && (
+                    <div className="mt-3 pt-3 border-t border-gray-100">
+                      <p className="text-xs text-gray-400 mb-2">
+                        Tocá un jugador para cambiar de equipo (Equipo A → Equipo B → afuera). Máximo 7 por equipo.
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {confirmedPlayers.map((a) => {
+                          const pid = a.profile_id
+                          const inHome = ed.homeTeam.includes(pid)
+                          const inAway = ed.awayTeam.includes(pid)
+                          const teamFull = inHome || inAway ? false : ed.homeTeam.length >= 7 && ed.awayTeam.length >= 7
+                          return (
+                            <button
+                              key={pid}
+                              type="button"
+                              onClick={() => toggleEncuentroPlayer(ed, pid)}
+                              disabled={teamFull}
+                              className={cn(
+                                "px-2 py-1 rounded-lg text-xs font-medium border transition-colors",
+                                inHome && "bg-blue-100 text-blue-700 border-blue-200",
+                                inAway && "bg-red-100 text-red-700 border-red-200",
+                                !inHome && !inAway && "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100",
+                                teamFull && "opacity-40 cursor-not-allowed"
+                              )}
+                            >
+                              {a.profiles.nickname || a.profiles.name}
+                            </button>
+                          )
+                        })}
+                      </div>
+                      <div className="flex justify-end mt-3">
+                        <button
+                          onClick={() => handleSaveEncuentro(ed)}
+                          className={cn(
+                            "px-4 py-1.5 rounded-lg text-sm font-medium",
+                            ed.saved ? "bg-gray-100 text-gray-600 hover:bg-gray-200" : "bg-primary text-white hover:bg-primary-light"
+                          )}
+                        >
+                          {ed.saved ? "Actualizar encuentro" : "Guardar encuentro"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
         </div>
 
         <div className="grid md:grid-cols-2 gap-6">
