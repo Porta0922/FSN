@@ -4,10 +4,15 @@ import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Navbar from "@/components/Navbar"
 import { createClient } from "@/lib/supabase/client"
-import type { Profile } from "@/types"
+import { formatDateShort, getStatusColor, getStatusLabel } from "@/lib/utils"
+import type { Profile, Attendance, Match } from "@/types"
 import { POSITIONS } from "@/lib/constants"
 import { ArrowLeft, Camera, Check } from "lucide-react"
 import { toast } from "sonner"
+
+interface AttendanceWithMatch extends Attendance {
+  match: Match | null
+}
 
 export default function PlayerDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -19,6 +24,8 @@ export default function PlayerDetailPage() {
   const [saving, setSaving] = useState(false)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [stats, setStats] = useState({ goals: 0, assists: 0, matches: 0, confirmed: 0 })
+  const [history, setHistory] = useState<AttendanceWithMatch[]>([])
+  const [debtCount, setDebtCount] = useState(0)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -66,6 +73,28 @@ export default function PlayerDetailPage() {
         .eq("status", "confirmed")
 
       setStats({ goals: goals || 0, assists: assists || 0, matches: matches || 0, confirmed: confirmed || 0 })
+
+      const { data: attHistory } = await supabase
+        .from("attendance")
+        .select("*, match:matches(*)")
+        .eq("profile_id", id)
+
+      if (attHistory) {
+        const sorted = (attHistory as unknown as AttendanceWithMatch[])
+          .filter((a) => a.match)
+          .sort((a, b) => (b.match?.date || "").localeCompare(a.match?.date || ""))
+        setHistory(sorted)
+
+        const { data: approved } = await supabase
+          .from("payments")
+          .select("match_id")
+          .eq("profile_id", id)
+          .eq("status", "approved")
+
+        const paidMatchIds = new Set((approved || []).map((p) => p.match_id))
+        const debts = sorted.filter((a) => a.status === "confirmed" && a.match?.status === "played" && !paidMatchIds.has(a.match_id))
+        setDebtCount(debts.length)
+      }
 
       setLoading(false)
     }
@@ -156,6 +185,19 @@ export default function PlayerDetailPage() {
       </div>
     )
   }
+
+  const playedHistory = history.filter((h) => h.match?.status === "played")
+  const totalResponses = playedHistory.filter((h) => h.status !== "pending").length
+  const confirmedCount = playedHistory.filter((h) => h.status === "confirmed").length
+  const attendancePct = totalResponses > 0 ? Math.round((confirmedCount / totalResponses) * 100) : 0
+
+  let streak = 0
+  for (const h of playedHistory) {
+    if (h.status === "confirmed") streak++
+    else break
+  }
+
+  const recentHistory = history.slice(0, 10)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -297,6 +339,54 @@ export default function PlayerDetailPage() {
             </p>
             <p className="text-sm text-gray-500">Asistencia</p>
           </div>
+        </div>
+
+        <div className="mt-6 grid grid-cols-3 gap-4">
+          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 text-center">
+            <p className="text-3xl font-bold text-emerald-600">{attendancePct}%</p>
+            <p className="text-sm text-gray-500">Cumplimiento</p>
+          </div>
+          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 text-center">
+            <p className="text-3xl font-bold text-amber-600">{streak}</p>
+            <p className="text-sm text-gray-500">Racha actual</p>
+          </div>
+          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 text-center">
+            <p className={`text-3xl font-bold ${debtCount > 0 ? "text-red-600" : "text-green-600"}`}>{debtCount}</p>
+            <p className="text-sm text-gray-500">Partidos en deuda</p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 mt-6">
+          <h2 className="font-semibold text-gray-900 mb-4">Historial de asistencia</h2>
+          {recentHistory.length === 0 ? (
+            <p className="text-sm text-gray-400">Todavía no hay partidos registrados para este jugador.</p>
+          ) : (
+            <div className="space-y-2">
+              {recentHistory.map((entry) => (
+                <div key={entry.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">
+                      {entry.match ? formatDateShort(entry.match.date) : "-"}
+                      <span className="text-gray-400 font-normal"> · {entry.match?.time}hs</span>
+                    </p>
+                    {entry.match?.home_score != null && entry.match?.away_score != null && (
+                      <p className="text-xs text-gray-400">
+                        Resultado: {entry.match.home_score} - {entry.match.away_score}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {entry.match?.status === "played" && !["confirmed", "pending"].includes(entry.status) && (
+                      <span className="text-xs text-red-500">No asistió</span>
+                    )}
+                    <span className={`text-xs font-medium px-2 py-1 rounded-lg ${getStatusColor(entry.status)}`}>
+                      {getStatusLabel(entry.status)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </main>
     </div>

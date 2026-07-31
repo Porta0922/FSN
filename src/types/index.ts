@@ -26,6 +26,8 @@ export interface Match {
   cost: number
   status: MatchStatus
   notes: string | null
+  home_score: number | null
+  away_score: number | null
   created_by: string | null
   created_at: string
 }
@@ -133,6 +135,7 @@ export interface TeamConfig {
   fine_percentage: number
   mvp_points_first: number
   mvp_points_second: number
+  mvp_vote_deadline_hours: number
   created_at: string
   updated_at: string
 }

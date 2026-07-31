@@ -10,6 +10,7 @@ import { toast } from "sonner"
 interface MatchWithMVP extends Match {
   present: Profile[]
   myVotes: string[]
+  votingClosed: boolean
   mvp: { id: string; name: string; votes: number; points: number }[]
 }
 
@@ -17,8 +18,8 @@ export default function MVPPage() {
   const [playedMatches, setPlayedMatches] = useState<MatchWithMVP[]>([])
   const [loading, setLoading] = useState(true)
   const [userId, setUserId] = useState<string | null>(null)
-  const [pointsConfig, setPointsConfig] = useState({ first: 3, second: 1 })
-  const pointsConfigRef = useRef({ first: 3, second: 1 })
+  const [pointsConfig, setPointsConfig] = useState({ first: 3, second: 1, hours: 24 })
+  const pointsConfigRef = useRef({ first: 3, second: 1, hours: 24 })
   const [selected, setSelected] = useState<Record<string, string[]>>({})
   const [submitting, setSubmitting] = useState<string | null>(null)
 
@@ -29,9 +30,9 @@ export default function MVPPage() {
       if (!user) return
       setUserId(user.id)
 
-      const { data: cfg } = await supabase.from("team_config").select("mvp_points_first, mvp_points_second").limit(1).single()
+      const { data: cfg } = await supabase.from("team_config").select("mvp_points_first, mvp_points_second, mvp_vote_deadline_hours").limit(1).single()
       if (cfg) {
-        pointsConfigRef.current = { first: cfg.mvp_points_first, second: cfg.mvp_points_second }
+        pointsConfigRef.current = { first: cfg.mvp_points_first, second: cfg.mvp_points_second, hours: cfg.mvp_vote_deadline_hours ?? 24 }
         setPointsConfig(pointsConfigRef.current)
       }
 
@@ -86,7 +87,10 @@ export default function MVPPage() {
             }
           })
 
-          return { ...m, present, myVotes, mvp }
+          const deadline = new Date(`${m.date}T${m.time}`).getTime() + pointsConfigRef.current.hours * 3600 * 1000
+          const votingClosed = Date.now() > deadline
+
+          return { ...m, present, myVotes, votingClosed, mvp }
         })
       )
 
@@ -160,20 +164,25 @@ export default function MVPPage() {
       <main className="max-w-4xl mx-auto px-4 py-6">
         <h1 className="text-2xl font-bold text-gray-900 mb-6">🏆 MVP</h1>
         <p className="text-sm text-gray-500 mb-6">
-          Los jugadores presentes votan por 2 MVPs. 1º suma {pointsConfig.first} pts y 2º suma {pointsConfig.second} pts.
+          Los jugadores presentes votan por 2 MVPs. 1º suma {pointsConfig.first} pts y 2º suma {pointsConfig.second} pts. La votación cierra {pointsConfig.hours}h después del partido.
         </p>
 
         <div className="space-y-4">
           {playedMatches.map((match) => {
             const isPresent = match.present.some((p) => p.id === userId)
             const votesLeft = 2 - match.myVotes.length
-            const canVote = isPresent && votesLeft > 0
+            const canVote = isPresent && votesLeft > 0 && !match.votingClosed
             const selection = selected[match.id] || []
 
             return (
               <div key={match.id} className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
                 <div className="flex items-center justify-between mb-3">
-                  <p className="font-semibold text-gray-900">{formatDateShort(match.date)}</p>
+                  <p className="font-semibold text-gray-900">
+                    {formatDateShort(match.date)}
+                    {match.votingClosed && (
+                      <span className="ml-2 text-xs font-medium text-gray-400">· votación cerrada</span>
+                    )}
+                  </p>
                   {match.mvp.length > 0 && (
                     <div className="flex gap-2">
                       {match.mvp.map((mvp, i) => (
@@ -224,9 +233,15 @@ export default function MVPPage() {
                   </div>
                 )}
 
-                {isPresent && !canVote && match.myVotes.length >= 2 && (
+                {isPresent && match.votingClosed && (
                   <p className="text-sm text-gray-400">
-                    Ya votaste tus 2 MVPs de este partido. Los resultados se actualizan solos.
+                    La votación de este partido ya cerró.
+                  </p>
+                )}
+
+                {isPresent && !canVote && !match.votingClosed && match.myVotes.length >= 2 && (
+                  <p className="text-sm text-gray-400">
+                    Ya votaste tus 2 MVPs de este partido. Los resultados se actualizan hasta que cierre la votación.
                   </p>
                 )}
 

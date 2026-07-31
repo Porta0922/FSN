@@ -207,6 +207,12 @@ export default function DashboardPage() {
                 <p className="font-medium text-gray-900">📊 Estadísticas del mes</p>
                 <p className="text-sm text-gray-500">Goles, asistencias y más</p>
               </Link>
+              {user && (
+                <Link href={`/players/${user.id}`} className="block p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
+                  <p className="font-medium text-gray-900">👤 Mi perfil</p>
+                  <p className="text-sm text-gray-500">Editar mis datos y foto</p>
+                </Link>
+              )}
             </div>
           </div>
 

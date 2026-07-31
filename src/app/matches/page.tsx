@@ -148,6 +148,11 @@ export default function MatchesPage() {
                   <p className="text-sm text-gray-500">
                     {match.time}hs | {formatCurrency(match.cost)}
                   </p>
+                  {match.status === "played" && match.home_score != null && match.away_score != null && (
+                    <p className="text-sm font-semibold text-gray-700 mt-0.5">
+                      Resultado: {match.home_score} - {match.away_score}
+                    </p>
+                  )}
                 </Link>
 
                 <div className="flex items-center gap-1">

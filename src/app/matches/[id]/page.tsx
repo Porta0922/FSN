@@ -23,6 +23,7 @@ export default function MatchDetailPage() {
   const [newGoalScorer, setNewGoalScorer] = useState("")
   const [newGoalAssist, setNewGoalAssist] = useState("")
   const [mvp, setMvp] = useState<{ id: string; name: string; votes: number; points: number }[]>([])
+  const [score, setScore] = useState({ home: "", away: "" })
   const [loading, setLoading] = useState(true)
   const [reloadKey, setReloadKey] = useState(0)
 
@@ -41,7 +42,13 @@ export default function MatchDetailPage() {
         .eq("id", id)
         .single()
 
-      if (matchData) setMatch(matchData)
+      if (matchData) {
+        setMatch(matchData)
+        setScore({
+          home: matchData.home_score != null ? String(matchData.home_score) : "",
+          away: matchData.away_score != null ? String(matchData.away_score) : "",
+        })
+      }
 
       const { data: attData } = await supabase
         .from("attendance")
@@ -122,6 +129,19 @@ export default function MatchDetailPage() {
     }
     setMatch((prev) => prev ? { ...prev, status: newStatus as Match["status"] } : null)
     setReloadKey((k) => k + 1)
+  }
+
+  async function handleSaveScore() {
+    const home = score.home === "" ? null : Math.max(0, parseInt(score.home))
+    const away = score.away === "" ? null : Math.max(0, parseInt(score.away))
+    const supabase = createClient()
+    const { error } = await supabase.from("matches").update({ home_score: home, away_score: away }).eq("id", id)
+    if (error) {
+      toast.error("Error al guardar el resultado")
+      return
+    }
+    setMatch((prev) => prev ? { ...prev, home_score: home, away_score: away } : null)
+    toast.success("Resultado guardado")
   }
 
   async function handleAddGoal() {
@@ -241,6 +261,11 @@ export default function MatchDetailPage() {
               <h1 className="text-2xl font-bold text-gray-900">{formatDate(match.date)}</h1>
               <p className="text-gray-500">{match.time}hs | {formatCurrency(match.cost)}</p>
               {match.location && <p className="text-gray-500 text-sm">📍 {match.location}</p>}
+              {match.status === "played" && match.home_score != null && match.away_score != null && (
+                <p className="text-lg font-bold text-gray-900 mt-1">
+                  Resultado: {match.home_score} - {match.away_score}
+                </p>
+              )}
             </div>
             <span className={cn("px-3 py-1 rounded-full text-sm font-medium", getStatusColor(match.status))}>
               {getStatusLabel(match.status)}
@@ -273,6 +298,35 @@ export default function MatchDetailPage() {
                   Reabrir
                 </button>
               )}
+            </div>
+          )}
+
+          {isAdmin && match.status === "played" && (
+            <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-gray-100">
+              <span className="text-sm text-gray-500">Resultado:</span>
+              <input
+                type="number"
+                min={0}
+                value={score.home}
+                onChange={(e) => setScore({ ...score, home: e.target.value })}
+                placeholder="Nuestros"
+                className="w-24 px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
+              />
+              <span className="text-gray-400">-</span>
+              <input
+                type="number"
+                min={0}
+                value={score.away}
+                onChange={(e) => setScore({ ...score, away: e.target.value })}
+                placeholder="Rival"
+                className="w-24 px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
+              />
+              <button
+                onClick={handleSaveScore}
+                className="bg-primary text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-primary-light"
+              >
+                Guardar
+              </button>
             </div>
           )}
         </div>

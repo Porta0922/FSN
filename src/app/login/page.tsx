@@ -12,6 +12,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  const [showForgot, setShowForgot] = useState(false)
+  const [resetSent, setResetSent] = useState(false)
+  const [resetLoading, setResetLoading] = useState(false)
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -28,6 +31,27 @@ export default function LoginPage() {
     }
 
     router.push("/dashboard")
+  }
+
+  async function handleResetPassword(e: React.FormEvent) {
+    e.preventDefault()
+    setError("")
+    setResetLoading(true)
+
+    const origin = window.location.origin
+    const supabase = createClient()
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${origin}/reset-password`,
+    })
+
+    setResetLoading(false)
+
+    if (error) {
+      setError(error.message)
+      return
+    }
+
+    setResetSent(true)
   }
 
   return (
@@ -87,6 +111,55 @@ export default function LoginPage() {
             Registrarse
           </Link>
         </p>
+
+        {!showForgot ? (
+          <p className="text-center text-sm text-gray-500 mt-2">
+            <button
+              type="button"
+              onClick={() => setShowForgot(true)}
+              className="text-primary font-semibold hover:underline"
+            >
+              Olvidé mi contraseña
+            </button>
+          </p>
+        ) : resetSent ? (
+          <div className="mt-4 bg-green-50 p-4 rounded-lg text-sm text-green-700">
+            Enviamos un correo de recuperación a <strong>{email}</strong>. Revisá tu bandeja de entrada.
+          </div>
+        ) : (
+          <form onSubmit={handleResetPassword} className="mt-4 space-y-3">
+            <p className="text-sm text-gray-500">
+              Ingresá tu email y te enviaremos un enlace para cambiar tu contraseña.
+            </p>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-colors text-sm"
+              placeholder="tu@email.com"
+              required
+            />
+            {error && (
+              <p className="text-sm text-red-600 bg-red-50 p-3 rounded-lg">{error}</p>
+            )}
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={resetLoading}
+                className="flex-1 bg-primary text-white py-2 rounded-lg text-sm font-semibold hover:bg-primary-light transition-colors disabled:opacity-50"
+              >
+                {resetLoading ? "Enviando..." : "Enviar enlace"}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowForgot(false); setError("") }}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200"
+              >
+                Cancelar
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   )
