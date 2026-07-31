@@ -10,6 +10,7 @@ import {
   BarChart3,
   Trophy,
   Image,
+  Store,
   Shield,
   LogOut,
   Menu,
@@ -26,6 +27,7 @@ const navItems = [
   { href: "/stats", label: "Estadísticas", icon: BarChart3 },
   { href: "/mvp", label: "MVP", icon: Trophy },
   { href: "/photos", label: "Fotos", icon: Image },
+  { href: "/marketplace", label: "Marketplace", icon: Store },
 ]
 
 export default function Navbar() {

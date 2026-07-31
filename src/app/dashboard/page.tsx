@@ -5,9 +5,8 @@ import Link from "next/link"
 import Navbar from "@/components/Navbar"
 import { createClient } from "@/lib/supabase/client"
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from "@/lib/utils"
-import { CalendarDays, Users, Trophy, ArrowRight, CircleDot, Store, Plus, Trash2, X, Upload } from "lucide-react"
-import { toast } from "sonner"
-import type { Match, MarketplaceItem, Profile } from "@/types"
+import { CalendarDays, Users, Trophy, ArrowRight, CircleDot } from "lucide-react"
+import type { Match, Profile } from "@/types"
 
 interface MvpStanding {
   profile_id: string
@@ -26,15 +25,6 @@ export default function DashboardPage() {
   const [stats, setStats] = useState({ totalMatches: 0, totalGoals: 0, attendance: 0 })
   const [mvpStandings, setMvpStandings] = useState<MvpStanding[]>([])
   const [loading, setLoading] = useState(true)
-  const [isAdmin, setIsAdmin] = useState(false)
-  const [marketplaceItems, setMarketplaceItems] = useState<MarketplaceItem[]>([])
-  const [showMarketplaceModal, setShowMarketplaceModal] = useState(false)
-  const [productName, setProductName] = useState("")
-  const [productDescription, setProductDescription] = useState("")
-  const [productPrice, setProductPrice] = useState("")
-  const [productFile, setProductFile] = useState<File | null>(null)
-  const [productPreview, setProductPreview] = useState<string | null>(null)
-  const [savingProduct, setSavingProduct] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -106,93 +96,11 @@ export default function DashboardPage() {
       })
       setMvpStandings((standings || []) as MvpStanding[])
 
-      const { data: isAdminUser } = await supabase.rpc("is_admin", { user_id: authUser.id })
-      setIsAdmin(!!isAdminUser)
-
-      const { data: items } = await supabase
-        .from("marketplace_items")
-        .select("*")
-        .order("created_at", { ascending: false })
-      if (items) setMarketplaceItems(items)
-
       setLoading(false)
     }
 
     load()
   }, [])
-
-  async function handleAddProduct() {
-    if (!productName.trim() || !productPrice || !productFile) {
-      toast.error("Completá nombre, precio y foto")
-      return
-    }
-
-    const price = Number(productPrice)
-    if (isNaN(price) || price <= 0) {
-      toast.error("Precio inválido")
-      return
-    }
-
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-
-    setSavingProduct(true)
-    const fileName = `${Date.now()}-${productFile.name}`
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from("marketplace")
-      .upload(fileName, productFile)
-
-    if (uploadError || !uploadData) {
-      toast.error("Error al subir la foto")
-      setSavingProduct(false)
-      return
-    }
-
-    const { data: { publicUrl } } = supabase.storage
-      .from("marketplace")
-      .getPublicUrl(uploadData.path)
-
-    const { error: insertError } = await supabase.from("marketplace_items").insert({
-      name: productName.trim(),
-      description: productDescription.trim() || null,
-      price,
-      image_url: publicUrl,
-      created_by: user.id,
-    })
-
-    if (insertError) {
-      toast.error("Error al guardar el producto")
-      setSavingProduct(false)
-      return
-    }
-
-    toast.success("Producto agregado")
-    const { data: items } = await supabase
-      .from("marketplace_items")
-      .select("*")
-      .order("created_at", { ascending: false })
-    if (items) setMarketplaceItems(items)
-
-    setProductName("")
-    setProductDescription("")
-    setProductPrice("")
-    setProductFile(null)
-    setProductPreview(null)
-    setShowMarketplaceModal(false)
-    setSavingProduct(false)
-  }
-
-  async function handleDeleteProduct(id: string) {
-    const supabase = createClient()
-    const { error } = await supabase.from("marketplace_items").delete().eq("id", id)
-    if (error) {
-      toast.error("Error al borrar el producto")
-      return
-    }
-    setMarketplaceItems((prev) => prev.filter((i) => i.id !== id))
-    toast.success("Producto eliminado")
-  }
 
   if (loading) {
     return (
@@ -341,129 +249,7 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
-
-        <div className="mt-6 bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-              <Store size={20} className="text-primary" />
-              Marketplace
-            </h2>
-            {isAdmin && (
-              <button
-                onClick={() => setShowMarketplaceModal(true)}
-                className="inline-flex items-center gap-1.5 bg-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-light transition-colors"
-              >
-                <Plus size={16} />
-                Agregar producto
-              </button>
-            )}
-          </div>
-
-          {marketplaceItems.length === 0 ? (
-            <p className="text-sm text-gray-400">Aún no hay productos cargados.</p>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {marketplaceItems.map((item) => (
-                <div key={item.id} className="relative group bg-gray-50 rounded-xl overflow-hidden border border-gray-100">
-                  <img src={item.image_url} alt={item.name} className="w-full h-40 object-cover" />
-                  <div className="p-3">
-                    <p className="font-medium text-gray-900 text-sm truncate">{item.name}</p>
-                    {item.description && (
-                      <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{item.description}</p>
-                    )}
-                    <p className="text-primary font-bold mt-1">{formatCurrency(item.price)}</p>
-                  </div>
-                  {isAdmin && (
-                    <button
-                      onClick={() => handleDeleteProduct(item.id)}
-                      className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                      title="Borrar producto"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
       </main>
-
-      {showMarketplaceModal && (
-        <div
-          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
-          onClick={() => setShowMarketplaceModal(false)}
-        >
-          <div className="bg-white rounded-xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Nuevo producto</h3>
-              <button onClick={() => setShowMarketplaceModal(false)} className="p-1 rounded-lg hover:bg-gray-100">
-                <X size={18} />
-              </button>
-            </div>
-
-            {productPreview ? (
-              <div className="relative mb-4">
-                <img src={productPreview} alt="Preview" className="w-full h-48 object-cover rounded-xl" />
-                <button
-                  onClick={() => { setProductFile(null); setProductPreview(null) }}
-                  className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            ) : (
-              <label className="flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-xl p-8 mb-4 cursor-pointer hover:border-primary transition-colors">
-                <Upload size={28} className="text-gray-400 mb-2" />
-                <span className="text-sm text-gray-500">Seleccionar foto del producto</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) {
-                      setProductFile(file)
-                      setProductPreview(URL.createObjectURL(file))
-                    }
-                  }}
-                />
-              </label>
-            )}
-
-            <div className="space-y-3">
-              <input
-                value={productName}
-                onChange={(e) => setProductName(e.target.value)}
-                placeholder="Nombre del producto"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-              />
-              <input
-                value={productDescription}
-                onChange={(e) => setProductDescription(e.target.value)}
-                placeholder="Descripción (opcional)"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-              />
-              <input
-                value={productPrice}
-                onChange={(e) => setProductPrice(e.target.value)}
-                placeholder="Precio (Gs.)"
-                type="number"
-                min="0"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-              />
-            </div>
-
-            <button
-              onClick={handleAddProduct}
-              disabled={savingProduct}
-              className="w-full mt-4 bg-primary text-white py-2 rounded-lg text-sm font-medium hover:bg-primary-light disabled:opacity-50 transition-colors"
-            >
-              {savingProduct ? "Guardando..." : "Guardar producto"}
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

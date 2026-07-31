@@ -5,6 +5,48 @@ export function formatCurrency(amount: number): string {
   return `Gs. ${amount.toLocaleString("es-PY")}`
 }
 
+export function resizeImage(file: File, maxSize = 1000, quality = 0.8): Promise<File> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      const scale = Math.min(1, maxSize / Math.max(img.width, img.height))
+      const width = Math.max(1, Math.round(img.width * scale))
+      const height = Math.max(1, Math.round(img.height * scale))
+
+      const canvas = document.createElement("canvas")
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext("2d")
+      if (!ctx) {
+        reject(new Error("No se pudo procesar la imagen"))
+        return
+      }
+      ctx.drawImage(img, 0, 0, width, height)
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            reject(new Error("No se pudo procesar la imagen"))
+            return
+          }
+          resolve(new File([blob], file.name.replace(/\.\w+$/, ".jpg"), { type: "image/jpeg" }))
+        },
+        "image/jpeg",
+        quality
+      )
+    }
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error("Imagen inválida"))
+    }
+
+    img.src = url
+  })
+}
+
 export function formatDate(dateStr: string): string {
   return format(parseISO(dateStr), "EEEE d 'de' MMMM", { locale: es })
 }
