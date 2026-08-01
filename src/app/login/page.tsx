@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
@@ -11,10 +11,22 @@ export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
+  const [resetOk, setResetOk] = useState(false)
   const [loading, setLoading] = useState(false)
   const [showForgot, setShowForgot] = useState(false)
   const [resetSent, setResetSent] = useState(false)
   const [resetLoading, setResetLoading] = useState(false)
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get("reset") === "ok") {
+      const id = window.setTimeout(() => {
+        setResetOk(true)
+        window.history.replaceState({}, "", window.location.pathname)
+      }, 0)
+      return () => window.clearTimeout(id)
+    }
+  }, [])
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -62,6 +74,12 @@ export default function LoginPage() {
           <h1 className="text-2xl font-bold text-primary">{TEAM_NAME}</h1>
           <p className="text-sm text-gray-500 mt-1">Iniciar sesión</p>
         </div>
+
+        {resetOk && (
+          <div className="mb-4 bg-green-50 border border-green-200 p-4 rounded-lg text-sm text-green-700">
+            Contraseña actualizada. Iniciá sesión con tu contraseña nueva.
+          </div>
+        )}
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div>

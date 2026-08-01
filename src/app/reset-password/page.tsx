@@ -11,20 +11,50 @@ export default function ResetPasswordPage() {
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [error, setError] = useState("")
-  const [loading, setLoading] = useState(true)
+  const [checking, setChecking] = useState(true)
+  const [ready, setReady] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [done, setDone] = useState(false)
 
   useEffect(() => {
     const supabase = createClient()
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
-      if (error || !session) {
-        setError("El enlace es inválido o expiró. Volvé a solicitar la recuperación de contraseña.")
-        setLoading(false)
+    let mounted = true
+
+    // El link de recovery llega con ?code=... (PKCE). El cliente lo intercambia
+    // automáticamente al inicializar; escuchamos el evento para no depender solo
+    // de getSession(), que puede resolver antes de que termine el intercambio.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return
+      if ((event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") && session) {
+        setReady(true)
+        setChecking(false)
+      }
+    })
+
+    supabase.auth.getSession().then(({ data, error: sessionError }) => {
+      if (!mounted) return
+      if (sessionError) {
+        setError("No se pudo validar el enlace de recuperación. Volvé a solicitarlo.")
+        setChecking(false)
         return
       }
-      setLoading(false)
+      if (data.session) {
+        setReady(true)
+        setChecking(false)
+      }
     })
+
+    // Sin sesión en 8s => el enlace es inválido, expiró o el código no se pudo canjear.
+    const timeout = setTimeout(() => {
+      if (!mounted) return
+      setChecking(false)
+      setReady(false)
+    }, 8000)
+
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+      clearTimeout(timeout)
+    }
   }, [])
 
   async function handleSubmit(e: React.FormEvent) {
@@ -44,7 +74,6 @@ export default function ResetPasswordPage() {
     setSaving(true)
     const supabase = createClient()
     const { error } = await supabase.auth.updateUser({ password })
-
     setSaving(false)
 
     if (error) {
@@ -52,8 +81,9 @@ export default function ResetPasswordPage() {
       return
     }
 
-    setDone(true)
-    setTimeout(() => router.push("/dashboard"), 2000)
+    // Cerrar sesión de recovery y volver al login para entrar con la contraseña nueva.
+    await supabase.auth.signOut()
+    router.replace("/login?reset=ok")
   }
 
   return (
@@ -65,23 +95,21 @@ export default function ResetPasswordPage() {
           <p className="text-sm text-gray-500 mt-1">Nueva contraseña</p>
         </div>
 
-        {loading ? (
+        {checking ? (
           <div className="flex justify-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           </div>
-        ) : error && !done ? (
+        ) : !ready ? (
           <div className="space-y-4">
-            <p className="text-sm text-red-600 bg-red-50 p-3 rounded-lg">{error}</p>
+            <p className="text-sm text-red-600 bg-red-50 p-3 rounded-lg">
+              {error || "El enlace es inválido o expiró. Volvé a solicitar la recuperación de contraseña."}
+            </p>
             <Link
               href="/login"
               className="block text-center bg-primary text-white py-2.5 rounded-lg font-semibold hover:bg-primary-light transition-colors"
             >
               Volver al inicio de sesión
             </Link>
-          </div>
-        ) : done ? (
-          <div className="bg-green-50 p-4 rounded-lg text-sm text-green-700 text-center">
-            Contraseña actualizada correctamente. Redirigiendo...
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -95,6 +123,7 @@ export default function ResetPasswordPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-colors"
                 placeholder="••••••••"
+                autoComplete="new-password"
                 required
               />
             </div>
@@ -109,6 +138,7 @@ export default function ResetPasswordPage() {
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-colors"
                 placeholder="••••••••"
+                autoComplete="new-password"
                 required
               />
             </div>
