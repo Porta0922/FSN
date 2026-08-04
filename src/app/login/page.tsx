@@ -42,7 +42,10 @@ export default function LoginPage() {
       return
     }
 
-    router.push("/dashboard")
+    const params = new URLSearchParams(window.location.search)
+    const next = params.get("next")
+    const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : null
+    router.push(safeNext || "/dashboard")
   }
 
   async function handleResetPassword(e: React.FormEvent) {
@@ -50,10 +53,10 @@ export default function LoginPage() {
     setError("")
     setResetLoading(true)
 
-    const origin = window.location.origin
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin
     const supabase = createClient()
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${origin}/reset-password`,
+      redirectTo: `${siteUrl}/reset-password`,
     })
 
     setResetLoading(false)

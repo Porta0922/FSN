@@ -7,8 +7,9 @@ import { createClient } from "@/lib/supabase/client"
 import { formatDate, formatCurrency, getStatusColor, getStatusLabel, cn } from "@/lib/utils"
 import { FINE_PERCENTAGE } from "@/lib/constants"
 import type { Match, AttendanceWithProfile, GoalWithProfiles, PaymentWithProfile, Expense, FineWithProfile } from "@/types"
-import { ArrowLeft, DollarSign, Target, Users, Trophy } from "lucide-react"
+import { ArrowLeft, DollarSign, QrCode, Target, Users, Trophy } from "lucide-react"
 import { toast } from "sonner"
+import { getCheckinToken, generateCheckinToken } from "@/lib/checkin-actions"
 
 interface EncuentroEditor {
   id: string | null
@@ -38,12 +39,59 @@ export default function MatchDetailPage() {
   const [encuentros, setEncuentros] = useState<EncuentroEditor[]>([])
   const [loading, setLoading] = useState(true)
   const [reloadKey, setReloadKey] = useState(0)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [qr, setQr] = useState<{ url: string; validFrom: string; validUntil: string; img: string } | null>(null)
+  const [qrLoading, setQrLoading] = useState(false)
+
+  function applyQr(res: { token: string; validFrom: string; validUntil: string }) {
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin
+    const url = `${siteUrl}/checkin?t=${res.token}`
+    setQr({
+      url,
+      validFrom: res.validFrom,
+      validUntil: res.validUntil,
+      img: `/api/qr?data=${encodeURIComponent(url)}&size=300`,
+    })
+  }
+
+  async function handleGenerateQr() {
+    setQrLoading(true)
+    try {
+      const res = await generateCheckinToken(id)
+      if (res) applyQr(res)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo generar el QR")
+    } finally {
+      setQrLoading(false)
+    }
+  }
+
+  async function handleCopyQr() {
+    if (!qr) return
+    try {
+      await navigator.clipboard.writeText(qr.url)
+      toast.success("URL copiada")
+    } catch {
+      toast.error("No se pudo copiar")
+    }
+  }
+
+  function formatWindow(iso: string) {
+    return new Date(iso).toLocaleString("es-PY", {
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+  }
 
   useEffect(() => {
     async function load() {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
+
+      setCurrentUserId(user.id)
 
       const { data: isAdminUser } = await supabase.rpc("is_admin", { user_id: user.id })
       setIsAdmin(!!isAdminUser)
@@ -60,6 +108,10 @@ export default function MatchDetailPage() {
           home: matchData.home_score != null ? String(matchData.home_score) : "",
           away: matchData.away_score != null ? String(matchData.away_score) : "",
         })
+        if (isAdminUser || matchData.created_by === user.id) {
+          const res = await getCheckinToken(id).catch(() => null)
+          if (res) applyQr(res)
+        }
       }
 
       const { data: attData } = await supabase
@@ -381,6 +433,7 @@ export default function MatchDetailPage() {
 
   const confirmedPlayers = attendance.filter((a) => a.status === "confirmed")
   const shareAmount = match ? Math.floor(match.cost / (confirmedPlayers.length || 1)) : 0
+  const canManageQr = isAdmin || (match != null && currentUserId != null && match.created_by === currentUserId)
 
   if (loading) {
     return (
@@ -496,6 +549,51 @@ export default function MatchDetailPage() {
             </div>
           )}
         </div>
+
+        {canManageQr && (
+          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <QrCode size={20} className="text-primary" />
+                <h2 className="font-semibold text-gray-900">QR de check-in</h2>
+              </div>
+              <button
+                onClick={handleGenerateQr}
+                disabled={qrLoading}
+                className="bg-primary text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-primary-light disabled:opacity-50"
+              >
+                {qr ? "Rotar QR" : "Generar QR"}
+              </button>
+            </div>
+
+            {qrLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              </div>
+            ) : qr ? (
+              <div className="flex flex-col items-center gap-3">
+                <img src={qr.img} alt="QR de check-in" className="w-48 h-48" />
+                <p className="text-xs text-gray-400 break-all text-center max-w-xs">{qr.url}</p>
+                <p className="text-xs text-gray-400">
+                  Válido desde {formatWindow(qr.validFrom)} hasta {formatWindow(qr.validUntil)}
+                </p>
+                <button
+                  onClick={handleCopyQr}
+                  className="text-xs text-primary font-medium hover:underline"
+                >
+                  Copiar URL (para programar un tag NFC)
+                </button>
+                <p className="text-xs text-gray-400">
+                  Escaneá el QR en la cancha con el teléfono para confirmar asistencia. La rotación invalida el QR anterior.
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400 text-center py-4">
+                Generá un QR para que los jugadores confirmen asistencia en la cancha.
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 mb-6">
           <div className="flex items-center justify-between mb-4">

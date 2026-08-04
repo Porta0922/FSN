@@ -116,6 +116,39 @@ export function getStatusColor(status: string): string {
   }
 }
 
+export const CHECKIN_LEAD_HOURS = 3
+
+function paraguayOffsetMs(instant: number): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Asuncion",
+    timeZoneName: "longOffset",
+  }).formatToParts(new Date(instant))
+  const name = parts.find((p) => p.type === "timeZoneName")?.value ?? "GMT-04:00"
+  const m = /GMT([+-])(\d{2}):(\d{2})/.exec(name)
+  if (!m) return -4 * 60 * 60 * 1000
+  const sign = m[1] === "-" ? -1 : 1
+  return sign * (parseInt(m[2], 10) * 60 + parseInt(m[3], 10)) * 60 * 1000
+}
+
+export function matchStartInstant(dateStr: string, timeStr: string): Date {
+  const [y = 2000, mo = 1, d = 1] = dateStr.split("-").map(Number)
+  const [hh = 0, mm = 0] = timeStr.split(":").map(Number)
+  const utc = Date.UTC(y, mo - 1, d, hh, mm)
+  return new Date(utc - paraguayOffsetMs(utc))
+}
+
+export function checkinWindow(
+  dateStr: string,
+  timeStr: string,
+  durationMinutes: number
+): { validFrom: string; validUntil: string } {
+  const start = matchStartInstant(dateStr, timeStr)
+  return {
+    validFrom: new Date(start.getTime() - CHECKIN_LEAD_HOURS * 3_600_000).toISOString(),
+    validUntil: new Date(start.getTime() + durationMinutes * 60_000).toISOString(),
+  }
+}
+
 export function getStatusLabel(status: string): string {
   const labels: Record<string, string> = {
     confirmed: "Confirmado",

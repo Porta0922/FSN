@@ -159,6 +159,16 @@ export interface EncuentroWithPlayers extends Encuentro {
   players: EncuentroPlayer[]
 }
 
+export interface MatchCheckinToken {
+  id: string
+  match_id: string
+  token: string
+  valid_from: string | null
+  valid_until: string | null
+  created_by: string | null
+  created_at: string
+}
+
 export interface TeamConfig {
   id: string
   team_name: string
